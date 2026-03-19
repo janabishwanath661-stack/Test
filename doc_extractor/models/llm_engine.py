@@ -66,7 +66,7 @@ def _load_model(cfg):
         elif llm_cfg.load_in_8bit:
             bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
     except Exception as e:
-        logger.warning(f"bitsandbytes not available ({e}), loading in fp32 on CPU.")
+        logger.warning(f"bitsandbytes (quantization) not available or failed: {e}. Loading unquantized.")
 
     load_kwargs: dict[str, Any] = {
         "trust_remote_code": True,
@@ -75,11 +75,15 @@ def _load_model(cfg):
     if bnb_cfg:
         load_kwargs["quantization_config"] = bnb_cfg
     else:
-        load_kwargs["torch_dtype"] = torch.float32
+        # If not quantized, use half precision if on GPU to save RAM, else fp32
+        if torch.cuda.is_available():
+            load_kwargs["torch_dtype"] = torch.float16
+        else:
+            load_kwargs["torch_dtype"] = torch.float32
 
     _model = AutoModelForCausalLM.from_pretrained(local_path, **load_kwargs)
     _model.eval()
-    logger.info("LLM ready.")
+    logger.info(f"LLM ready (device: {_model.device}, dtype: {_model.dtype})")
     return _tokenizer, _model
 
 

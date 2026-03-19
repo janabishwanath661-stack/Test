@@ -17,10 +17,12 @@ import torch
 class OCRConfig:
     # ── Handwriting specialist (HuggingFace) ──────────────────────────────────
     trocr_model_id: str = "microsoft/trocr-base-handwritten"
-    trocr_device: str = field(default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu")
+    # Use "auto" to let transformers decide (will use GPU if available)
+    trocr_device: str = "auto"
 
     # ── Printed-text OCR ──────────────────────────────────────────────────────
     easyocr_languages: list = field(default_factory=lambda: ["en"])
+    # EasyOCR needs an explicit bool. We check cuda but allow override.
     easyocr_gpu: bool = field(default_factory=lambda: torch.cuda.is_available())
 
     # ── Pre-processing ────────────────────────────────────────────────────────
@@ -44,7 +46,8 @@ class LLMConfig:
     load_in_8bit: bool = True
     load_in_4bit: bool = False          # Overrides 8-bit if True
 
-    device_map: str = field(default_factory=lambda: "auto" if torch.cuda.is_available() else "cpu")
+    # "auto" will use GPU if available, or CPU if not.
+    device_map: str = "auto"
     max_new_tokens: int = 1024
     temperature: float = 0.0            # Greedy = deterministic JSON
     repetition_penalty: float = 1.1

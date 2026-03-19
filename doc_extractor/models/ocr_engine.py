@@ -67,9 +67,21 @@ def _load_trocr(cfg):
         logger.info(f"Loading TrOCR from {local_path}…")
         from transformers import TrOCRProcessor, VisionEncoderDecoderModel
         _trocr_processor = TrOCRProcessor.from_pretrained(local_path)
-        _trocr_model = VisionEncoderDecoderModel.from_pretrained(local_path).to(ocr_cfg.trocr_device)
+        
+        # Use device_map if "auto", otherwise fall back to explicit device
+        load_kwargs = {}
+        if ocr_cfg.trocr_device == "auto":
+            load_kwargs["device_map"] = "auto"
+        
+        _trocr_model = VisionEncoderDecoderModel.from_pretrained(
+            local_path, **load_kwargs
+        )
+        
+        if ocr_cfg.trocr_device != "auto":
+            _trocr_model = _trocr_model.to(ocr_cfg.trocr_device)
+            
         _trocr_model.eval()
-        logger.info("TrOCR ready.")
+        logger.info(f"TrOCR ready (device: {_trocr_model.device}).")
     return _trocr_processor, _trocr_model
 
 
@@ -82,7 +94,7 @@ def _load_easyocr(languages: list[str], gpu: bool, weights_dir: str):
         easyocr_dir = os.path.join(weights_dir, "easyocr")
         os.makedirs(easyocr_dir, exist_ok=True)
         
-        logger.info(f"Loading EasyOCR reader (storage: {easyocr_dir})…")
+        logger.info(f"Loading EasyOCR (GPU={gpu}, storage={easyocr_dir})…")
         import easyocr
         _easyocr_reader = easyocr.Reader(
             languages, 
@@ -91,7 +103,7 @@ def _load_easyocr(languages: list[str], gpu: bool, weights_dir: str):
             model_storage_directory=easyocr_dir,
             download_enabled=True
         )
-        logger.info("EasyOCR ready.")
+        logger.info(f"EasyOCR ready (using {'GPU' if gpu else 'CPU'}).")
     return _easyocr_reader
 
 
