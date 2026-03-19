@@ -10,17 +10,18 @@ All model choices are justified for the "mini resources" constraint:
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
+import torch
 
 
 @dataclass
 class OCRConfig:
     # ── Handwriting specialist (HuggingFace) ──────────────────────────────────
     trocr_model_id: str = "microsoft/trocr-base-handwritten"
-    trocr_device: str = "cpu"           # "cuda" if VRAM ≥ 2 GB
+    trocr_device: str = field(default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu")
 
     # ── Printed-text OCR ──────────────────────────────────────────────────────
     easyocr_languages: list = field(default_factory=lambda: ["en"])
-    easyocr_gpu: bool = False           # flip to True if GPU available
+    easyocr_gpu: bool = field(default_factory=lambda: torch.cuda.is_available())
 
     # ── Pre-processing ────────────────────────────────────────────────────────
     image_max_dim: int = 2048           # Resize long edge before OCR (memory cap)
@@ -43,7 +44,7 @@ class LLMConfig:
     load_in_8bit: bool = True
     load_in_4bit: bool = False          # Overrides 8-bit if True
 
-    device_map: str = "auto"            # "cpu" to force CPU-only
+    device_map: str = field(default_factory=lambda: "auto" if torch.cuda.is_available() else "cpu")
     max_new_tokens: int = 1024
     temperature: float = 0.0            # Greedy = deterministic JSON
     repetition_penalty: float = 1.1
