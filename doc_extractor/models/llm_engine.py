@@ -66,7 +66,7 @@ def _load_model(cfg):
         elif llm_cfg.load_in_8bit:
             bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
     except Exception as e:
-        logger.warning(f"bitsandbytes not available ({e}), loading in fp32 on CPU.")
+        logger.warning(f"bitsandbytes (quantization) not available or failed: {e}. Loading unquantized.")
 
     load_kwargs: dict[str, Any] = {
         "trust_remote_code": True,
@@ -75,11 +75,15 @@ def _load_model(cfg):
     if bnb_cfg:
         load_kwargs["quantization_config"] = bnb_cfg
     else:
-        load_kwargs["torch_dtype"] = torch.float32
+        # If not quantized, use half precision if on GPU to save RAM, else fp32
+        if torch.cuda.is_available():
+            load_kwargs["torch_dtype"] = torch.float16
+        else:
+            load_kwargs["torch_dtype"] = torch.float32
 
     _model = AutoModelForCausalLM.from_pretrained(local_path, **load_kwargs)
     _model.eval()
-    logger.info("LLM ready.")
+    logger.info(f"LLM ready (device: {_model.device}, dtype: {_model.dtype})")
     return _tokenizer, _model
 
 
@@ -88,21 +92,15 @@ def _load_model(cfg):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
-You are a precision document data-extraction engine.
-Your ONLY job is to read the OCR text provided and extract specific fields.
+You are a high-precision document extraction engine. 
+Your goal is to extract ALL key information from the provided OCR text and format it as a single JSON object.
 
 RULES:
-1. Return ONLY a valid JSON object — no markdown, no backticks, no commentary.
-2. If a field cannot be found in the text, set its value to null.
-3. Text marked [HANDWRITTEN] takes PRIORITY over [PRINTED] text for the same field.
-4. Ignore all boilerplate, headers, footers, watermarks, and advertising copy.
-5. Dates must be in YYYY-MM-DD format. Amounts must be numeric (no currency symbols).
-6. Do not hallucinate values. If unsure, set null and lower _extraction_confidence.
-
-FIELDS TO EXTRACT:
-{field_descriptions}
-
-Respond with a single JSON object only.
+1. Return ONLY a valid JSON object. No markdown, no commentary.
+2. Dynamically create descriptive keys (in snake_case) for any piece of information found in the document (e.g., "invoice_number", "customer_name", "total_amount", "date_of_birth", etc.).
+3. Extract all relevant data from the document into this JSON object.
+4. Text marked [HANDWRITTEN] takes PRIORITY over [PRINTED] text.
+5. Dates must be in YYYY-MM-DD format if possible. Amounts should be numeric if applicable.
 """
 
 _USER_TEMPLATE = """\
@@ -110,7 +108,7 @@ OCR TEXT FROM DOCUMENT:
 ───────────────────────
 {ocr_text}
 ───────────────────────
-Extract all available fields from the text above and return the JSON object.
+Extract all available information from the text above and return the JSON object.
 """
 
 _RETRY_TEMPLATE = """\
@@ -124,8 +122,8 @@ Please try again. Return ONLY a valid JSON object, nothing else.
 """
 
 
-def _build_system(field_descriptions: str) -> str:
-    return _SYSTEM_PROMPT.format(field_descriptions=field_descriptions)
+def _build_system() -> str:
+    return _SYSTEM_PROMPT
 
 
 def _extract_json_from_response(text: str) -> dict:
@@ -166,17 +164,10 @@ def _extract_json_from_response(text: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class LLMEngine:
-    """Wraps Qwen2.5-1.5B-Instruct for schema-targeted JSON extraction."""
+    """Wraps Qwen2.5-1.5B-Instruct for dynamic JSON extraction."""
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self._field_descriptions: str | None = None
-
-    def _get_field_descriptions(self) -> str:
-        if self._field_descriptions is None:
-            from schema import get_field_descriptions
-            self._field_descriptions = get_field_descriptions()
-        return self._field_descriptions
 
     def _run_inference(self, messages: list[dict]) -> str:
         """Run a chat-format inference and return the raw string response."""
@@ -206,12 +197,12 @@ class LLMEngine:
 
     def extract(self, ocr_text: str, source_format: str = "unknown") -> dict:
         """
-        Given raw OCR text, return a validated extraction dict.
+        Given raw OCR text, return a dynamic extraction dict.
         Retries up to cfg.llm.max_retries times on JSON parse failure.
         """
         from schema import empty_record, coerce_types, validate
 
-        system = _build_system(self._get_field_descriptions())
+        system = _build_system()
         user_msg = _USER_TEMPLATE.format(ocr_text=ocr_text)
 
         messages = [
