@@ -133,11 +133,11 @@ def get_field_descriptions() -> str:
 
 
 def empty_record(source_format: str = "unknown") -> dict:
-    """Return a null-filled output record."""
-    record: dict[str, Any] = {k: None for k in TARGET_SCHEMA["properties"]}
-    record["_source_format"] = source_format
-    record["_extraction_confidence"] = None
-    return record
+    """Return an empty output record."""
+    return {
+        "_source_format": source_format,
+        "_extraction_confidence": None,
+    }
 
 
 def validate(record: dict) -> tuple[bool, list[str]]:
@@ -172,7 +172,13 @@ def coerce_types(record: dict) -> dict:
     if isinstance(record.get("currency"), str):
         record["currency"] = record["currency"].strip().upper()
 
-    return record
+    # Filter out empty/null fields so the final JSON only contains present data
+    cleaned_record = {}
+    for k, v in record.items():
+        if v not in (None, "", [], {}):
+            cleaned_record[k] = v
+
+    return cleaned_record
 
 
 def pretty(record: dict) -> str:
