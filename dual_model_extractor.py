@@ -2,6 +2,16 @@ import os
 import json
 import torch
 from PIL import Image
+
+import transformers
+import transformers.dynamic_module_utils
+_orig_get_class = transformers.dynamic_module_utils.get_class_from_dynamic_module
+def custom_get_class(*args, **kwargs):
+    cls = _orig_get_class(*args, **kwargs)
+    setattr(cls, '_supports_sdpa', False)
+    return cls
+transformers.dynamic_module_utils.get_class_from_dynamic_module = custom_get_class
+
 from transformers import AutoProcessor, AutoModelForCausalLM, AutoTokenizer, PreTrainedConfig
 
 # ==========================================

@@ -1,0 +1,20 @@
+# ── Core Document Parsers ──────────────────────────────────────────────────────
+pymupdf>=1.23.0          # PDF → image conversion (lightweight, no poppler needed)
+openpyxl>=3.1.0          # Excel .xlsx parsing
+pandas>=2.0.0            # Tabular data structuring
+Pillow>=10.0.0           # Image pre-processing
+
+# ── OCR Stack ─────────────────────────────────────────────────────────────────
+easyocr>=1.7.1           # Printed text OCR (CPU-friendly, no GPU required)
+# TrOCR is loaded via transformers below (handwritten specialist)
+
+# ── HuggingFace / Model Runtime ───────────────────────────────────────────────
+transformers>=4.40.0     # TrOCR + Qwen2.5 loading
+torch>=2.1.0             # CPU inference (avoid torchvision unless needed)
+accelerate>=0.27.0       # Low-memory model loading helpers
+bitsandbytes>=0.43.0     # 8-bit/4-bit quantization (Linux; skip on Windows)
+sentencepiece>=0.1.99    # Tokenizer dependency for some models
+
+# ── Validation & Utilities ────────────────────────────────────────────────────
+jsonschema>=4.21.0       # Output schema validation
+numpy>=1.24.0

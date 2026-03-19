@@ -1,0 +1,73 @@
+"""
+config.py – Central configuration for the extraction pipeline.
+
+All model choices are justified for the "mini resources" constraint:
+  • TrOCR-base-handwritten : ~340 MB, CPU-only, specialized for cursive/print mix
+  • Qwen2.5-1.5B-Instruct  : ~1.5 GB (fp16) → ~800 MB at int8; runs on 4 GB RAM
+  • EasyOCR                : No transformer weights, classical + CRAFT detector
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class OCRConfig:
+    # ── Handwriting specialist (HuggingFace) ──────────────────────────────────
+    trocr_model_id: str = "microsoft/trocr-base-handwritten"
+    trocr_device: str = "cpu"           # "cuda" if VRAM ≥ 2 GB
+
+    # ── Printed-text OCR ──────────────────────────────────────────────────────
+    easyocr_languages: list = field(default_factory=lambda: ["en"])
+    easyocr_gpu: bool = False           # flip to True if GPU available
+
+    # ── Pre-processing ────────────────────────────────────────────────────────
+    image_max_dim: int = 2048           # Resize long edge before OCR (memory cap)
+    pdf_dpi: int = 200                  # Higher = better OCR, more RAM; 200 is safe
+    contrast_enhance: float = 1.4       # Contrast multiplier before OCR
+    sharpen: bool = True
+
+    # ── Handwriting detection heuristic ──────────────────────────────────────
+    # Regions taller than this pixel-height are sent to TrOCR (line-level crops)
+    handwriting_min_box_h: int = 20
+
+
+@dataclass
+class LLMConfig:
+    # ── Small extraction LLM ─────────────────────────────────────────────────
+    # Qwen2.5-1.5B is the sweet spot: instruction-tuned, JSON-capable, <2 GB RAM
+    model_id: str = "Qwen/Qwen2.5-1.5B-Instruct"
+
+    # Quantization: "int8" ≈ halves RAM, "int4" ≈ quarters RAM (needs bitsandbytes)
+    load_in_8bit: bool = True
+    load_in_4bit: bool = False          # Overrides 8-bit if True
+
+    device_map: str = "auto"            # "cpu" to force CPU-only
+    max_new_tokens: int = 1024
+    temperature: float = 0.0            # Greedy = deterministic JSON
+    repetition_penalty: float = 1.1
+
+    # How many times to retry if JSON parse fails
+    max_retries: int = 3
+
+
+@dataclass
+class PipelineConfig:
+    ocr: OCRConfig = field(default_factory=OCRConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+
+    # ── Lazy loading: models loaded on first use, not at import ───────────────
+    lazy_load: bool = True
+
+    # ── Supported file extensions ─────────────────────────────────────────────
+    image_exts: tuple = (".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp")
+    pdf_exts: tuple = (".pdf",)
+    excel_exts: tuple = (".xlsx", ".xls", ".xlsm", ".csv")
+
+    # ── Output ────────────────────────────────────────────────────────────────
+    fallback_value: Optional[str] = None   # Value for fields not found in doc
+
+
+# Singleton – import this everywhere
+PIPELINE_CFG = PipelineConfig()
