@@ -11,13 +11,30 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 import torch
+import logging
 
+logger = logging.getLogger(__name__)
+
+# --- GPU Check Warning ---
+if not torch.cuda.is_available():
+    logger.warning(
+        "\n" + "="*80 + "\n"
+        "WARNING: PyTorch is NOT detecting any NVIDIA GPUs (torch.cuda.is_available() is False).\n"
+        "If you are running this on a device that HAS an NVIDIA GPU, your Python environment\n"
+        "likely installed the CPU-only version of PyTorch.\n"
+        "To enable GPU acceleration, please reinstall PyTorch with CUDA support:\n"
+        "  pip uninstall torch torchvision torchaudio accelerate bitsandbytes\n"
+        "  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118\n"
+        "  pip install accelerate bitsandbytes\n"
+        "="*80 + "\n"
+    )
 
 @dataclass
 class OCRConfig:
     # ── Handwriting specialist (HuggingFace) ──────────────────────────────────
     trocr_model_id: str = "microsoft/trocr-base-handwritten"
-    # Use "auto" to let transformers decide (will use GPU if available)
+    # Use "auto" to let transformers decide (will use all GPUs if available).
+    # To force a specific GPU on a multi-GPU machine, change this to "cuda:0", "cuda:1", etc.
     trocr_device: str = "auto"
 
     # ── Printed-text OCR ──────────────────────────────────────────────────────
@@ -46,7 +63,8 @@ class LLMConfig:
     load_in_8bit: bool = True
     load_in_4bit: bool = False          # Overrides 8-bit if True
 
-    # "auto" will use GPU if available, or CPU if not.
+    # "auto" will use all GPUs if available, or CPU if not.
+    # To force a specific GPU on a multi-GPU machine, change this to "cuda:0", "cuda:1", etc.
     device_map: str = "auto"
     max_new_tokens: int = 1024
     temperature: float = 0.0            # Greedy = deterministic JSON

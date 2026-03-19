@@ -70,20 +70,30 @@ def _load_model(cfg):
 
     load_kwargs: dict[str, Any] = {
         "trust_remote_code": True,
-        "device_map": llm_cfg.device_map,
     }
-    if bnb_cfg:
-        load_kwargs["quantization_config"] = bnb_cfg
-    else:
-        # If not quantized, use half precision if on GPU to save RAM, else fp32
-        if torch.cuda.is_available():
-            load_kwargs["torch_dtype"] = torch.float16
+
+    # If CUDA is available, use user's device_map ("auto", "cuda:0", etc.)
+    # If not, force CPU.
+    if torch.cuda.is_available():
+        load_kwargs["device_map"] = llm_cfg.device_map
+        if bnb_cfg:
+            load_kwargs["quantization_config"] = bnb_cfg
         else:
-            load_kwargs["torch_dtype"] = torch.float32
+            load_kwargs["torch_dtype"] = torch.float16
+    else:
+        load_kwargs["device_map"] = "cpu"
+        load_kwargs["torch_dtype"] = torch.float32
+        if bnb_cfg:
+            logger.warning("BitsAndBytes 4-bit/8-bit requested, but no GPU detected! Disabling quantization for CPU fallback.")
 
     _model = AutoModelForCausalLM.from_pretrained(local_path, **load_kwargs)
     _model.eval()
     logger.info(f"LLM ready (device: {_model.device}, dtype: {_model.dtype})")
+    
+    # Check if multiple GPUs are being used
+    if torch.cuda.is_available() and getattr(_model, "hf_device_map", None):
+        logger.info(f"LLM distributed across devices: {_model.hf_device_map}")
+        
     return _tokenizer, _model
 
 

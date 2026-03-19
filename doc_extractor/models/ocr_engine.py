@@ -66,21 +66,29 @@ def _load_trocr(cfg):
         
         logger.info(f"Loading TrOCR from {local_path}…")
         from transformers import TrOCRProcessor, VisionEncoderDecoderModel
+        import torch
+        
         _trocr_processor = TrOCRProcessor.from_pretrained(local_path)
         
         # Use device_map if "auto", otherwise fall back to explicit device
         load_kwargs = {}
         if ocr_cfg.trocr_device == "auto":
-            load_kwargs["device_map"] = "auto"
+            load_kwargs["device_map"] = "auto" if torch.cuda.is_available() else "cpu"
         
         _trocr_model = VisionEncoderDecoderModel.from_pretrained(
             local_path, **load_kwargs
         )
         
         if ocr_cfg.trocr_device != "auto":
+            # Explicitly sent device like 'cuda:0' or 'cuda:1'
             _trocr_model = _trocr_model.to(ocr_cfg.trocr_device)
             
         _trocr_model.eval()
+        
+        # Check if multiple GPUs are being used for TrOCR
+        if torch.cuda.is_available() and getattr(_trocr_model, "hf_device_map", None):
+            logger.info(f"TrOCR distributed across devices: {_trocr_model.hf_device_map}")
+            
         logger.info(f"TrOCR ready (device: {_trocr_model.device}).")
     return _trocr_processor, _trocr_model
 
