@@ -1,0 +1,35 @@
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Models and large files
+florence2_model/
+phi3_model/
+*.model
+*.bin
+*.pt
+*.pth
+*.h5
+*.ckpt
+*.onnx
+
+# IDEs
+.vscode/
+.idea/
+.ipynb_checkpoints/
+
+# System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Images (except sample_image.png)
+*.png
+!sample_image.png
