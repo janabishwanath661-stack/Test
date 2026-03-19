@@ -58,6 +58,11 @@ class PipelineConfig:
     ocr: OCRConfig = field(default_factory=OCRConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
 
+    # ── Local Weight Management ───────────────────────────────────────────────
+    # All downloaded models (TrOCR, Qwen, EasyOCR) are stored here.
+    # This ensures no internet is needed once downloaded.
+    weights_dir: str = "models/pretrained_weights"
+
     # ── Lazy loading: models loaded on first use, not at import ───────────────
     lazy_load: bool = True
 

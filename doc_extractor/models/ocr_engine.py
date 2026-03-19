@@ -54,28 +54,43 @@ _trocr_model = None
 _easyocr_reader = None
 
 
-def _load_trocr(device: str = "cpu"):
+def _load_trocr(cfg):
+    """cfg is the full PipelineConfig."""
     global _trocr_processor, _trocr_model
     if _trocr_model is None:
-        logger.info("Loading TrOCR handwriting model…")
+        from models import download_huggingface_model
+        ocr_cfg = cfg.ocr
+        
+        # ── Ensure model is downloaded locally ───────────────────────────────────
+        local_path = download_huggingface_model(ocr_cfg.trocr_model_id, cfg.weights_dir)
+        
+        logger.info(f"Loading TrOCR from {local_path}…")
         from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-        _trocr_processor = TrOCRProcessor.from_pretrained(
-            "microsoft/trocr-base-handwritten"
-        )
-        _trocr_model = VisionEncoderDecoderModel.from_pretrained(
-            "microsoft/trocr-base-handwritten"
-        ).to(device)
+        _trocr_processor = TrOCRProcessor.from_pretrained(local_path)
+        _trocr_model = VisionEncoderDecoderModel.from_pretrained(local_path).to(ocr_cfg.trocr_device)
         _trocr_model.eval()
         logger.info("TrOCR ready.")
     return _trocr_processor, _trocr_model
 
 
-def _load_easyocr(languages: list[str], gpu: bool):
+def _load_easyocr(languages: list[str], gpu: bool, weights_dir: str):
+    """Downloads easyocr models to the specific weights_dir."""
     global _easyocr_reader
     if _easyocr_reader is None:
-        logger.info("Loading EasyOCR reader…")
+        # Create easyocr subfolder in weights_dir
+        import os
+        easyocr_dir = os.path.join(weights_dir, "easyocr")
+        os.makedirs(easyocr_dir, exist_ok=True)
+        
+        logger.info(f"Loading EasyOCR reader (storage: {easyocr_dir})…")
         import easyocr
-        _easyocr_reader = easyocr.Reader(languages, gpu=gpu, verbose=False)
+        _easyocr_reader = easyocr.Reader(
+            languages, 
+            gpu=gpu, 
+            verbose=False,
+            model_storage_directory=easyocr_dir,
+            download_enabled=True
+        )
         logger.info("EasyOCR ready.")
     return _easyocr_reader
 
@@ -186,7 +201,7 @@ class OCREngine:
         img = preprocess_image(img, cfg.image_max_dim, cfg.contrast_enhance, cfg.sharpen)
 
         # ── 2. EasyOCR pass – gets bounding boxes for ALL text ──────────────
-        reader = _load_easyocr(cfg.easyocr_languages, cfg.easyocr_gpu)
+        reader = _load_easyocr(cfg.easyocr_languages, cfg.easyocr_gpu, self.cfg.weights_dir)
         raw_results = reader.readtext(np.array(img))
         # raw_results: list of (bbox, text, confidence)
 
@@ -203,7 +218,7 @@ class OCREngine:
             if is_hw and crop.height >= cfg.handwriting_min_box_h:
                 # ── 3. Re-read with TrOCR for handwritten crops ─────────────
                 if processor is None:
-                    processor, model = _load_trocr(cfg.trocr_device)
+                    processor, model = _load_trocr(self.cfg)
                 hw_text = _trocr_read(crop, processor, model, cfg.trocr_device)
                 final_text = hw_text if hw_text else easy_text
                 handwritten_parts.append(final_text)

@@ -9,6 +9,7 @@ easyocr>=1.7.1           # Printed text OCR (CPU-friendly, no GPU required)
 # TrOCR is loaded via transformers below (handwritten specialist)
 
 # ── HuggingFace / Model Runtime ───────────────────────────────────────────────
+huggingface_hub>=0.23.0  # Explicit snapshot downloads
 transformers>=4.40.0     # TrOCR + Qwen2.5 loading
 torch>=2.1.0             # CPU inference (avoid torchvision unless needed)
 accelerate>=0.27.0       # Low-memory model loading helpers

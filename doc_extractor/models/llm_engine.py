@@ -33,41 +33,51 @@ _model = None
 
 
 def _load_model(cfg):
+    """
+    cfg is the full PipelineConfig.
+    Loads LLM and Tokenizer from the local weights_dir.
+    """
     global _tokenizer, _model
     if _model is not None:
         return _tokenizer, _model
 
-    logger.info(f"Loading LLM: {cfg.model_id} …")
+    from models import download_huggingface_model
+    llm_cfg = cfg.llm
+    
+    # ── Ensure model is downloaded locally ───────────────────────────────────
+    local_path = download_huggingface_model(llm_cfg.model_id, cfg.weights_dir)
+
+    logger.info(f"Loading LLM: {llm_cfg.model_id} from {local_path} …")
     from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
     import torch
 
-    _tokenizer = AutoTokenizer.from_pretrained(cfg.model_id, trust_remote_code=True)
+    _tokenizer = AutoTokenizer.from_pretrained(local_path, trust_remote_code=True)
 
     # ── Quantization config ──────────────────────────────────────────────────
     bnb_cfg = None
     try:
-        if cfg.load_in_4bit:
+        if llm_cfg.load_in_4bit:
             bnb_cfg = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_use_double_quant=True,
                 bnb_4bit_compute_dtype=torch.float16,
             )
-        elif cfg.load_in_8bit:
+        elif llm_cfg.load_in_8bit:
             bnb_cfg = BitsAndBytesConfig(load_in_8bit=True)
     except Exception as e:
         logger.warning(f"bitsandbytes not available ({e}), loading in fp32 on CPU.")
 
     load_kwargs: dict[str, Any] = {
         "trust_remote_code": True,
-        "device_map": cfg.device_map,
+        "device_map": llm_cfg.device_map,
     }
     if bnb_cfg:
         load_kwargs["quantization_config"] = bnb_cfg
     else:
         load_kwargs["torch_dtype"] = torch.float32
 
-    _model = AutoModelForCausalLM.from_pretrained(cfg.model_id, **load_kwargs)
+    _model = AutoModelForCausalLM.from_pretrained(local_path, **load_kwargs)
     _model.eval()
     logger.info("LLM ready.")
     return _tokenizer, _model
@@ -171,7 +181,7 @@ class LLMEngine:
     def _run_inference(self, messages: list[dict]) -> str:
         """Run a chat-format inference and return the raw string response."""
         import torch
-        tokenizer, model = _load_model(self.cfg.llm)
+        tokenizer, model = _load_model(self.cfg)
 
         # Apply chat template (Qwen2.5 supports this natively)
         text = tokenizer.apply_chat_template(
